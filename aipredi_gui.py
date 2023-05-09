@@ -1,4 +1,50 @@
 import tkinter as tk
+from tkinter import ttk
+import requests
+import threading
+import website
+
+# Define event to signal pausing of training
+pause_event = threading.Event()
+
+# Define function to start training
+def start_training():
+    # Start the website
+    website.start()
+
+    # Disable start button and enable stop and pause buttons
+    start_button.config(state="disabled")
+    stop_button.config(state="normal")
+    pause_button.config(state="normal")
+
+    # Start training
+    for i in range(1, 101):
+        # Check for pause event and wait if it is set
+        while pause_event.is_set():
+            root.update()
+            continue
+
+        # Update progress and accuracy labels
+        progress_var.set(f"Training progress: {i}%")
+        accuracy_var.set(f"Accuracy: {i/2}%")
+
+        # Sleep for 0.1 seconds to simulate training time
+        root.after(100)
+
+# Define function to stop training and stop website
+def stop_training():
+    # Enable start button and disable stop and pause buttons
+    start_button.config(state="normal")
+    stop_button.config(state="disabled")
+    pause_button.config(text="Pause", state="disabled")
+
+    # Stop the website
+    website.stop()
+
+    # Reset progress and accuracy labels
+    progress_var.set("")
+    accuracy_var.set("")
+
 # Define function to pause/resume training
 def pause_training():
     # Toggle pause event
@@ -19,7 +65,7 @@ def check_website_status():
     except requests.exceptions.RequestException as e:
         # If the request fails, set the label text to "Website is down" and color to red
         website_status_label.config(text="Website is down", fg="red")
-    
+
     # Call this function again after 5 seconds
     root.after(5000, check_website_status)
 

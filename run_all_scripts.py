@@ -5,6 +5,8 @@ import subprocess
 import sys
 sys.path.append('/home/duckets/Documents/Aipredi')
 from aipredi_gui import *
+import subprocess
+import os
 
 # Define a function to simulate the AI training process
 def train_model(progress_var, accuracy_var, stop_event, pause_event):
@@ -51,6 +53,9 @@ def start_training():
     # Start training thread
     training_thread = threading.Thread(target=train_model, args=(progress_var, accuracy_var, stop_event, pause_event))
     training_thread.start()
+
+    # Open a new terminal and show processes and logging information for this program only
+    subprocess.Popen(['terminator', '-e', 'watch -n 1 "ps -ef | grep train_model"'])
 
 # Define function to stop training
 def stop_training():
@@ -111,5 +116,4 @@ if __name__ == '__main__':
     # Start checking website status
     check_website_status()
 
-    # Start GUI event loop
-    root.mainloop()
+
