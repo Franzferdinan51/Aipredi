@@ -1,105 +1,118 @@
-import time
+import threading
+import traceback
 import requests
 import subprocess
-import sys
-import os
-import traceback
-import threading
-from tkinter import messagebox
-import wikipedia
-import stackexchange
-import urllib.parse
-from blockchain import Blockchain
-from aipredi_gui import *
+import time
+from privateblockchain import PrivateBlockchain
 from aipredi import fix_code
+from bs4 import BeautifulSoup
+import random
 
-# Define a function to simulate the AI training process
-def train_model(progress_var, accuracy_var, stop_event, pause_event):
-    # Set initial values
-    progress = 0
-    accuracy = 0
+
+def train_model(stop_event, pause_event):
     epoch = 0
 
-    # Run training loop until stop button is pressed
     while not stop_event.is_set():
-        # Check if pause button is pressed
         while pause_event.is_set():
             time.sleep(0.1)
 
-        # Perform one epoch of training
-        time.sleep(0.5) # Simulate training time
+        time.sleep(0.5)
         epoch += 1
-        progress = epoch / 10
-        accuracy = epoch * 10 % 100
 
-        # Update progress and accuracy variables
-        set_progress(progress_var, progress)
-        set_accuracy(accuracy_var, accuracy)
-
-        # Check if training is complete
         if epoch == 10:
             break
 
-        # Update GUI
-        root.update()
-
-    # If an error occurs, save error information to file
     try:
-        # Call a function that doesn't exist to raise an exception
         undefined_function()
     except Exception as e:
-        # Get the traceback information
         tb = traceback.format_exc()
 
-        # Save the traceback information to a file
         with open('error.log', 'w') as f:
             f.write(tb)
 
-        # Display a message box with the error information
-        response = messagebox.askyesno("Error", f"An error occurred:\n\n{tb}\n\nDo you want to view the error log?")
-        if response:
-            # Open the error log file
+        response = input(f"An error occurred:\n\n{tb}\n\nDo you want to view the error log? (y/n)")
+        if response.lower() == "y":
             subprocess.Popen(['xdg-open', 'error.log'])
 
-# Define function to start training
+    response = input("Do you want to commit the fix to the blockchain? (y/n)")
+    if response.lower() == "y":
+        try:
+            blockchain = PrivateBlockchain()
+            fixed_code = fix_code("my_file.py")
+            blockchain.add_block(fixed_code)
+            print("The fix has been committed to the blockchain successfully.")
+        except Exception as e:
+            tb = traceback.format_exc()
+
+            with open('error.log', 'w') as f:
+                f.write(tb)
+
+            response = input(f"An error occurred while committing to the blockchain:\n\n{tb}\n\nDo you want to view the error log? (y/n)")
+            if response.lower() == "y":
+                subprocess.Popen(['xdg-open', 'error.log'])
+
+
 def start_training():
     global stop_event, pause_event
-    # Disable start button and enable stop and pause buttons
-    disable_start_button()
-    enable_stop_button()
-    enable_pause_button()
-
-    # Create stop and pause events
     stop_event = threading.Event()
     pause_event = threading.Event()
 
-    # Check blockchain for fixes
-    fix_found = False
-    # TODO: Check blockchain for fixes and set fix_found to True if a fix is found
+    search_query = "python 'list index out of range' error fix"
+    stack_overflow_results = []
 
-    if not fix_found:
-        # No fix found in blockchain, search for fixes in public sources
-        search_query = "python 'list index out of range' error fix"
-        stack_overflow_results = stackexchange.StackOverflow().search_advanced(q=search_query, sort='votes')
-        wikipedia_results = wikipedia.search(search_query)
+    for page in range(1, 11):
+        url = f"https://stackoverflow.com/search?page={page}&q={search_query}"
+        try:
+            webpage = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        except Exception as e:
+            print(f"An error occurred while getting the webpage content: {e}")
+            continue
 
-        # Combine results from all sources
-        search_results = stack_overflow_results + wikipedia_results
+        soup = BeautifulSoup(webpage.content, 'html.parser')
 
-        # Check each result for a code fix
-        for result in search_results:
+        results = soup.find_all('div', class_='question-summary search-result')
+
+        for result in results:
             try:
-                # Get the webpage content and check for a code fix
-                webpage = requests.get(result.url).text
-                if 'fix' in webpage:
-                    # Code fix found, prompt user to apply fix
-                    response = messagebox.askyesno("Fix Found", "A fix has been found for the program. Do you want to apply it?")
-                    if response == True:
-                        # Apply fix
-                        fixed_code = fix_code("my_file.py")
-                        with open("my_file.py", "w") as f:
-                            f.write(fixed_code)
-                        messagebox.showinfo("Fix Applied", "The fix has been applied successfully.")
+                title = result.find('a', class_='question-hyperlink').get_text()
+                url = f"https://stackoverflow.com{result.find('a', class_='question-hyperlink')['href']}"
+                question_page = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+                question_soup = BeautifulSoup(question_page.content, 'html.parser')
+                code_blocks = question_soup.find_all('pre', class_='lang-python')
+                for code_block in code_blocks:
+                    stack_overflow_results.append(code_block.get_text())
+            except Exception as e:
+                print(f"An error occurred while parsing the search results: {e}")
+                continue
 
-                        # Commit fix to blockchain
-                        response = messagebox.askyesno("Commit to Blockchain", "Do
+    if stack_overflow_results:
+        print(f"{len(stack_overflow_results)} code fixes found.")
+        fix = random.choice(stack_overflow_results)
+        print(f"Using the following fix:\n\n{fix}\n\n")
+        response = input("Do you want to apply this fix? (y/n)")
+        if response.lower() == "y":
+            with open("my_file.py", "w") as f:
+                f.write(fix)
+            print("The fix has been applied successfully.")
+    else:
+        print("No code fixes found.")
+# Start training the model in a separate thread
+training_thread = threading.Thread(target=train_model, args=(stop_event, pause_event))
+training_thread.start()
+# Wait for the user to stop or pause the training
+while True:
+    response = input("Enter 's' to stop training or 'p' to pause training:")
+    if response.lower() == "s":
+        stop_event.set()
+        break
+    elif response.lower() == "p":
+        pause_event.set()
+    else:
+        print("Invalid input. Please try again.")
+
+# Wait for the training thread to finish
+training_thread.join()
+
+print("Training complete.")
+
+
