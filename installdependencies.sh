@@ -10,14 +10,25 @@ source env/bin/activate
 sudo apt update
 
 # install packages
-sudo apt install python3-tk python3-pil python3-pil.imagetk python3-wikipedia python3-stackapi python3-pip
+sudo apt install python3-tk python3-pil python3-pil.imagetk python3-pip
 
 # install pip packages
 pip3 install requests
-pip3 install git+https://github.com/blockchain/api-v1-client-python.git
+pip3 install blockchain-api-client
+pip3 install blockchain
 
-# install stackexchange package
-pip3 install git+https://github.com/lucjon/Py-StackExchange.git
+# ask user for confirmation before deactivating virtual environment
+read -p "Do you want to deactivate the virtual environment? (yes/no) " choice
+case "$choice" in 
+  yes|y ) 
+    # wait for any running processes to finish
+    echo "Waiting for processes to finish..."
+    wait
+    # deactivate virtual environment
+    deactivate
+    ;;
+  * ) 
+    echo "Virtual environment will remain activated."
+    ;;
+esac
 
-# deactivate virtual environment
-deactivate
