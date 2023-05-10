@@ -1,3 +1,4 @@
+ 
 import time
 import requests
 import subprocess
@@ -5,13 +6,10 @@ import sys
 import os
 import traceback
 import threading
-from tkinter import messagebox
-import wikipedia
-import stackexchange
-import urllib.parse
-from blockchain import Blockchain
+from typing import List
+
+sys.path.append('/home/duckets/Documents/Aipredi')
 from aipredi_gui import *
-from aipredi import fix_code
 
 # Define a function to simulate the AI training process
 def train_model(progress_var, accuracy_var, stop_event, pause_event):
@@ -73,33 +71,39 @@ def start_training():
     stop_event = threading.Event()
     pause_event = threading.Event()
 
-    # Check blockchain for fixes
-    fix_found = False
-    # TODO: Check blockchain for fixes and set fix_found to True if a fix is found
+    # Start training thread
+    training_thread = threading.Thread(target=train_model, args=(progress_var, accuracy_var, stop_event, pause_event))
+    training_thread.start()
 
-    if not fix_found:
-        # No fix found in blockchain, search for fixes in public sources
-        search_query = "python 'list index out of range' error fix"
-        stack_overflow_results = stackexchange.StackOverflow().search_advanced(q=search_query, sort='votes')
-        wikipedia_results = wikipedia.search(search_query)
+    # Open a new terminal and show processes and logging information for this program only
+    subprocess.Popen(['terminator', '-e', 'watch -n 1 "ps -ef | grep train_model"'])
 
-        # Combine results from all sources
-        search_results = stack_overflow_results + wikipedia_results
+# Define function to stop training
+def stop_training():
+    # Enable start button and disable stop and pause buttons
+    enable_start_button()
+    disable_stop_button()
+    disable_pause_button()
 
-        # Check each result for a code fix
-        for result in search_results:
-            try:
-                # Get the webpage content and check for a code fix
-                webpage = requests.get(result.url).text
-                if 'fix' in webpage:
-                    # Code fix found, prompt user to apply fix
-                    response = messagebox.askyesno("Fix Found", "A fix has been found for the program. Do you want to apply it?")
-                    if response == True:
-                        # Apply fix
-                        fixed_code = fix_code("my_file.py")
-                        with open("my_file.py", "w") as f:
-                            f.write(fixed_code)
-                        messagebox.showinfo("Fix Applied", "The fix has been applied successfully.")
+    # Set stop event to stop training
+    stop_event.set()
 
-                        # Commit fix to blockchain
-                        response = messagebox.askyesno("Commit to Blockchain", "Do
+# Define function to pause/resume training
+def pause_training():
+    # Toggle pause event
+    if pause_button.config('text')[-1] == 'Pause':
+        pause_button.config(text='Resume')
+        pause_event.set()
+    else:
+        pause_button.config(text='Pause')
+        pause_event.clear()
+
+# Define function to check website status and update label
+def check_website_status():
+    # Send a GET request to the website
+    try:
+        response = requests.get('http://localhost:8000')
+        # If the request is successful, set the label text to "Website is up" and color to green
+        set_website_status("Website is up", "green")
+    except requests.exceptions.RequestException as e:
+        # If the request fails, set the label text to "Website is down" and color to red

@@ -1,40 +1,34 @@
- 
-import hashlib
-import datetime as date
+def fix_code(blockchain):
+    # Get a list of all Python scripts started by run_all_scripts.py
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    scripts = [f for f in os.listdir(script_dir) if f.endswith('.py') and f != 'run_all_scripts.py']
 
-class Block:
-    def __init__(self, index, timestamp, data, previous_hash):
-        self.index = index
-        self.timestamp = timestamp
-        self.data = data
-        self.previous_hash = previous_hash
-        self.hash = self.calculate_hash()
+    # Loop through each script and run pylint
+    for script in scripts:
+        print(f"Analyzing {script} with pylint...")
+        result = Run([script], do_exit=False)
+        issues = result.linter.stats['by_module']
 
-    def calculate_hash(self):
-        block_str = str(self.index) + str(self.timestamp) + str(self.data) + str(self.previous_hash)
-        return hashlib.sha256(block_str.encode('utf-8')).hexdigest()
+        # Loop through each issue and prompt the user to fix it
+        for issue in issues:
+            message = issues[issue]['messages'][0]
+            reason = message['message']
+            line = message['line']
+            column = message['column']
 
-class Blockchain:
-    def __init__(self):
-        self.chain = [self.create_genesis_block()]
+            # Check if fix information is available in the blockchain for this issue
+            fix_info = blockchain.get_fix_info(script, line, column)
+            if fix_info:
+                print(f"Using fix information from blockchain for issue in {script} at line {line}, column {column}")
+                fix, reason = fix_info
+            else:
+                fix = input(f"Found issue in {script} at line {line}, column {column}: {reason}\nDo you want to fix this issue? (y/n): ")
 
-    def create_genesis_block(self):
-        return Block(0, date.datetime.now(), "Genesis Block", "0")
+            if fix.lower() == 'y':
+                # Fix the issue using autopep8
+                subprocess.run(['autopep8', '--in-place', '--aggressive', f"{script}:{line}:{column}"])
 
-    def add_block(self, new_block):
-        new_block.previous_hash = self.chain[-1].hash
-        new_block.hash = new_block.calculate_hash()
-        self.chain.append(new_block)
+                # Add fix information to the blockchain
+                blockchain.add_fix_info(script, line, column, fix, reason)
 
-    def is_chain_valid(self):
-        for i in range(1, len(self.chain)):
-            current_block = self.chain[i]
-            previous_block = self.chain[i-1]
-
-            if current_block.hash != current_block.calculate_hash():
-                return False
-
-            if current_block.previous_hash != previous_block.hash:
-                return False
-
-        return True
+                print(f"Fixed issue in {script} at line {line}, column {column}: {reason}")
