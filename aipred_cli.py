@@ -22,7 +22,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # Ensure
 load_dotenv()
 
 # Set up your API keys (load from .env file for security)
-GEMINI_API_KEY = os.getenv("AIzaSyDEwn99vtbn8WB-KBzecRawG1lBi3dW09w")  # Your API key in quotes
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")  # Your API key in quotes
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
