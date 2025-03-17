@@ -8,30 +8,22 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, 
                              QPlainTextEdit, QSizePolicy, QMessageBox)
 from PySide6.QtCore import Qt, QThread, Signal, Slot
 from PySide6.QtGui import QFont
-from PySide6.QtGui import QClipboard
 import json
 import subprocess
+import speech_recognition as sr
 from PIL import Image
 import threading
-
-# Optional imports for other model types (install these if needed: pip install torch tensorflow)
-# import torch
-# import tensorflow as tf
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # Ensure transformers is installed
 
 load_dotenv()
 
 # Set up your API keys (load from .env file for security)
-GEMINI_API_KEY = os.getenv("AIzaSyDEwn99vtbn8WB-KBzecRawG1lBi3dW09w")  # Your API key in quotes
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 LLAMA_API_KEY = os.getenv("LLAMA_API_KEY")
 
 API_URL = "http://127.0.0.1:5000"  # Replace with your Flask API URL
-LAST_AI_FILE = "last_ai.txt"
 
-
-# --- Helper Functions (remain the same) --->
-# --- Helper Functions --->
+# --- Helper Functions ---
 
 def display_error(title, message):
     msg_box = QMessageBox()
@@ -63,7 +55,30 @@ def run_subprocess(command, shell=False, text=True, check=True, stderr=subproces
         return f"Error: {e.stdout.strip()}"
     except FileNotFoundError:
         return "Error: Command not found."
-# --- AI Functions (remain the same) ---
+
+# --- Speech-to-Text ---
+
+def speech_to_text(main_window): # Pass the main window to access GUI elements
+    r = sr.Recognizer()
+    with sr.Microphone() as source:
+        display_info("Speech Recognition", "Listening...")
+        try:
+            audio = r.listen(source)
+            display_info("Speech Recognition", "Recognizing...")
+            # For simplicity, using Google Speech Recognition directly (requires internet)
+            try:
+                text = r.recognize_google(audio)
+                display_info("Speech Recognition", f"Recognized Text: {text}")
+                main_window.command_entry.setPlainText(text)
+            except sr.UnknownValueError:
+                display_warning("Speech Recognition", "Could not understand audio")
+            except sr.RequestError as e:
+                display_error("Speech Recognition", f"Error occurred during speech recognition: {e}")
+        except sr.WaitTimeoutError:
+            display_warning("Speech Recognition", "No speech detected within the timeout.")
+        except Exception as e:
+            display_error("Speech Recognition", f"An unexpected error occurred during speech recognition: {e}")
+
 # --- AI Functions ---
 
 def google_gemini(message):
@@ -134,7 +149,7 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("AI Chatbox")
-        self.setGeometry(100, 100, 1920, 1080)  # Set window size to 1080p
+        self.setGeometry(100, 100, 800, 600)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -144,7 +159,6 @@ class MainWindow(QMainWindow):
         # --- Chat Display ---
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
-        self.chat_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding) # Allow expansion
         self.layout.addWidget(self.chat_display)
 
         # --- Chat Input ---
@@ -154,32 +168,23 @@ class MainWindow(QMainWindow):
         self.send_button = QPushButton("Send")
         self.send_button.clicked.connect(self.send_message)
         self.input_layout.addWidget(self.send_button)
+        self.speech_button = QPushButton("Speech Recognition")
+        self.speech_button.clicked.connect(self.start_speech_recognition)
+        self.input_layout.addWidget(self.speech_button)
         self.layout.addLayout(self.input_layout)
 
-        # --- AI Selection and Controls ---
-        self.controls_layout = QHBoxLayout()
-        self.ai_label = QLabel("Select AI:")
-        self.controls_layout.addWidget(self.ai_label)
+        # --- AI Selection ---
+        self.ai_layout = QHBoxLayout()
+        self.ai_label = QLabel("Select AI Participant:")
+        self.ai_layout.addWidget(self.ai_label)
         self.cmb_ai = QComboBox()
-        self.controls_layout.addWidget(self.cmb_ai)
-
-        self.clear_history_button = QPushButton("Clear History")
-        self.clear_history_button.clicked.connect(self.clear_chat_history)
-        self.controls_layout.addWidget(self.clear_history_button)
-
-        self.layout.addLayout(self.controls_layout)
+        self.ai_layout.addWidget(self.cmb_ai)
+        self.layout.addLayout(self.ai_layout)
 
         # --- Output Display (for thought process) ---
         self.output_display = QPlainTextEdit()
         self.output_display.setReadOnly(True)
-        self.output_display.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding) # Allow expansion
         self.layout.addWidget(self.output_display)
-
-        self.output_controls_layout = QHBoxLayout()
-        self.copy_output_button = QPushButton("Copy Output")
-        self.copy_output_button.clicked.connect(self.copy_output_to_clipboard)
-        self.output_controls_layout.addWidget(self.copy_output_button)
-        self.layout.addLayout(self.output_controls_layout)
 
         self.status_label = QLabel("")
         self.layout.addWidget(self.status_label)
@@ -202,23 +207,14 @@ class MainWindow(QMainWindow):
         if message:
             self.add_message(message, "You")
             self.command_entry.clear()
-            selected_ai_name = self.cmb_ai.currentText()
-            ai_response = None
-            if selected_ai_name == "google_gemini":
-                threading.Thread(target=self.fetch_and_display_gemini_response, args=(message,)).start()
-            elif selected_ai_name == "autogpt":
-                threading.Thread(target=self.fetch_and_display_autogpt_response, args=(message,)).start()
-            elif selected_ai_name == "LLaMA":
-                threading.Thread(target=self.fetch_and_display_llama_response, args=(message,)).start()
+            selected_ai_index = self.cmb_ai.currentIndex()
+            if selected_ai_index < len(ai_list):
+                selected_ai = ai_list[selected_ai_index]
+                ai_response = selected_ai(message)
+                if ai_response:
+                    self.response(ai_response, selected_ai.__name__)
             else:
-                # Check for locally loaded AI participants
-                for ai_func in ai_list:
-                    if hasattr(ai_func, '__name__') and ai_func.__name__ == selected_ai_name:
-                        threading.Thread(target=self.fetch_and_display_local_response, args=(message, ai_func)).start()
-                        break
-                else:
-                    display_error("Error", "No AI participant selected or found.")
-            self.status_label.setText("Idle.") # Clear status after processing
+                display_error("Error", "No AI participant selected or found.")
 
     def display_output(self, text):
         self.output_display.appendPlainText(text)
@@ -228,49 +224,11 @@ class MainWindow(QMainWindow):
         response_text = google_gemini(prompt)
         if response_text:
             self.display_output("Gemini finished thinking.")
-            self.response(response_text, "google_gemini")
+            self.response(response_text, "Google Gemini")
         else:
             self.display_output("No response from Gemini.\n")
-        self.status_label.setText("Idle.")
-
-    def fetch_and_display_autogpt_response(self, prompt):
-        self.display_output("AutoGPT is thinking...")
-        response_text = autogpt(prompt)
-        if response_text:
-            self.display_output("AutoGPT finished thinking.")
-            self.response(response_text, "autogpt")
-        else:
-            self.display_output("No response from AutoGPT.\n")
-        self.status_label.setText("Idle.")
-
-    def fetch_and_display_llama_response(self, prompt):
-        self.display_output("LLaMA is thinking...")
-        response_text = LLaMA(prompt)
-        if response_text:
-            self.display_output("LLaMA finished thinking.")
-            self.response(response_text, "LLaMA")
-        else:
-            self.display_output("No response from LLaMA.\n")
-        self.status_label.setText("Idle.")
-
-    def fetch_and_display_local_response(self, prompt, ai_function):
-        self.display_output(f"{ai_function.__name__} is thinking...")
-        response_text = ai_function(prompt)
-        if response_text:
-            self.display_output(f"{ai_function.__name__} finished thinking.")
-            self.response(response_text, ai_function.__name__)
-        else:
-            self.display_output(f"No response from {ai_function.__name__}.\n")
-        self.status_label.setText("Idle.")
 
     def load_ai_participants(self):
-        if GEMINI_API_KEY:
-            ai_list.append(google_gemini)
-        if OPENAI_API_KEY:
-            ai_list.append(autogpt)
-        if LLAMA_API_KEY:
-            ai_list.append(LLaMA)
-
         modules_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "modules")
         sys.path.append(modules_dir)
         if os.path.exists(modules_dir):
@@ -280,14 +238,9 @@ class MainWindow(QMainWindow):
                     module_name = file[:-3]
                     try:
                         module = importlib.import_module(module_name)
-
-                        # Check for a general 'ai' function
                         if hasattr(module, "ai") and callable(module.ai) and module.ai not in ai_list:
                             ai_list.append(module.ai)
-                            print(f"Loaded AI function from: {module_name} as {module_name}")
-
-                        # Check for Hugging Face model path
-                        elif hasattr(module, "model_path"):
+                        elif hasattr(module, "model_path"):  # Basic check for a model path
                             model_path = getattr(module, "model_path")
                             try:
                                 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
@@ -305,29 +258,12 @@ class MainWindow(QMainWindow):
                                 huggingface_ai.__name__ = module_name
                                 if huggingface_ai not in ai_list:
                                     ai_list.append(huggingface_ai)
-                                    print(f"Loaded Hugging Face model from: {model_name} as {module_name}")
+                                    print(f"Loaded Hugging Face model from: {model_path} as {module_name}")
 
                             except ImportError as e:
                                 print(f"Error importing transformers or loading model from {module_name}: {e}")
                             except Exception as e:
                                 print(f"Error loading Hugging Face model from {module_name}: {e}")
-
-                        # Add checks for other model types here (e.g., PyTorch, TensorFlow)
-                        # elif hasattr(module, "pytorch_model"):
-                        #     # Example PyTorch loading (requires proper setup in the module)
-                        #     if hasattr(module, "load_pytorch_model") and callable(module.load_pytorch_model):
-                        #         model = module.load_pytorch_model()
-                        #         if hasattr(module, "generate_pytorch_response") and callable(module.generate_pytorch_response) and hasattr(model, '__call__'):
-                        #             def pytorch_ai(prompt, model=model, generate_fn=module.generate_pytorch_response):
-                        #                 return generate_fn(prompt, model)
-                        #             pytorch_ai.__name__ = module_name
-                        #             if pytorch_ai not in ai_list:
-                        #                 ai_list.append(pytorch_ai)
-                        #                 print(f"Loaded PyTorch model from: {module_name} as {module_name}")
-
-                        else:
-                            print(f"Warning: No valid AI interface found in module: {module_name}")
-
                     except Exception as e:
                         print(f"Error loading module {module_name}: {e}")
         else:
@@ -343,49 +279,6 @@ class MainWindow(QMainWindow):
             self.cmb_ai.setCurrentIndex(0)
 
     @Slot()
-    def clear_chat_history(self):
-        # Clear the widgets in the chat layout
-        for i in reversed(range(self.chat_layout.count())):
-            widget = self.chat_layout.itemAt(i).widget()
-            if widget is not None:
-                widget.deleteLater()
-
-    @Slot()
-    def copy_output_to_clipboard(self):
-        # For this new GUI, we'll copy the entire chat history
-        full_chat = ""
-        for i in range(self.chat_layout.count()):
-            item = self.chat_layout.itemAt(i)
-            if item.widget():
-                full_chat += item.widget().text() + "\n"
-        clipboard = QClipboard()
-        clipboard.setText(full_chat.strip())
-        display_info("Copied", "Chat history copied to clipboard.")
-
-    def closeEvent(self, event):
-        self.save_last_ai()
-        event.accept()
-
-    def save_last_ai(self):
-        current_ai = self.cmb_ai.currentText()
-        try:
-            with open(LAST_AI_FILE, "w") as f:
-                f.write(current_ai)
-        except Exception as e:
-            print(f"Error saving last AI: {e}")
-
-    def load_last_ai(self):
-        try:
-            if os.path.exists(LAST_AI_FILE):
-                with open(LAST_AI_FILE, "r") as f:
-                    last_ai = f.readline().strip()
-                    index = self.cmb_ai.findText(last_ai)
-                    if index != -1:
-                        self.cmb_ai.setCurrentIndex(index)
-        except Exception as e:
-            print(f"Error loading last AI: {e}")
-
-    @Slot()
     def start_speech_recognition(self):
         threading.Thread(target=speech_to_text, args=(self,)).start()
 
@@ -393,21 +286,16 @@ class MainWindow(QMainWindow):
         """Executes a system command or a predefined action and displays the output."""
         command_lower = command.lower()
         if command_lower == "open notepad":
-            notepad_command = "notepad.exe" if sys.platform.startswith('win') else (
-                "xdg-open notepad" if sys.platform.startswith('linux') else (
-                "open -a TextEdit" if sys.platform.startswith('darwin') else None))
+            notepad_command = "notepad.exe" if sys.platform.startswith('win') else ("xdg-open notepad" if sys.platform.startswith('linux') else ("open -a TextEdit" if sys.platform.startswith('darwin') else None))
             if notepad_command:
-                output = run_subprocess(notepad_command, shell=True)
-                return f"Command: {command}\n{output}\n"
+                return run_subprocess(notepad_command, shell=True)
             else:
-                return "Error: Unsupported OS for '{command}'.\n"
+                return "Error: Unsupported operating system for 'open notepad'."
         elif command_lower == "list files":
             list_command = "dir" if sys.platform.startswith('win') else "ls -l"
-            output = run_subprocess(list_command, shell=True)
-            return f"Command: {command}\n{output}\n"
+            return run_subprocess(list_command, shell=True)
         else:
-            output = run_subprocess(command, shell=True)
-            return f"Command: {command}\n{output}\n"
+            return run_subprocess(command, shell=True)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

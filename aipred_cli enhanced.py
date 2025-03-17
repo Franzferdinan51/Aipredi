@@ -286,9 +286,10 @@ class MainWindow(QMainWindow):
                             ai_list.append(module.ai)
                             print(f"Loaded AI function from: {module_name} as {module_name}")
 
-                        # Check for Hugging Face model path
-                        elif hasattr(module, "model_path"):
-                            model_path = getattr(module, "model_path")
+                        # Check for Hugging Face model (assume it's in the modules dir)
+                        elif hasattr(module, "model_name"):  # Changed from model_path to model_name
+                            model_name = getattr(module, "model_name")
+                            model_path = os.path.join(modules_dir, model_name)  # Construct model path
                             try:
                                 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
                                 tokenizer = AutoTokenizer.from_pretrained(model_path)
@@ -305,7 +306,7 @@ class MainWindow(QMainWindow):
                                 huggingface_ai.__name__ = module_name
                                 if huggingface_ai not in ai_list:
                                     ai_list.append(huggingface_ai)
-                                    print(f"Loaded Hugging Face model from: {model_name} as {module_name}")
+                                    print(f"Loaded Hugging Face model from: {model_path} as {module_name}")
 
                             except ImportError as e:
                                 print(f"Error importing transformers or loading model from {module_name}: {e}")

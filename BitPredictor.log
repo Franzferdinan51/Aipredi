@@ -1,0 +1,4 @@
+Traceback (most recent call last):
+  File "C:\Users\Ryan\Desktop\Codegen-main\AssistantAI\Aipredi-main\BitPredictor.py", line 2, in <module>
+    from PriceUpdater import update_prices
+ImportError: cannot import name 'update_prices' from 'PriceUpdater' (C:\Users\Ryan\Desktop\Codegen-main\AssistantAI\Aipredi-main\PriceUpdater.py)
